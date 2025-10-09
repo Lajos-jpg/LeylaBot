@@ -1,0 +1,13 @@
+{
+  "name": "leylabot",
+  "version": "1.0.0",
+  "main": "Leyla.js",
+  "type": "module",
+  "scripts": {
+    "start": "node Leyla.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.12.2",
+    "openai": "^4.0.0"
+  }
+}
