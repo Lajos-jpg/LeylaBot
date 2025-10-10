@@ -69,7 +69,7 @@ bot.on("message", async (ctx) => {
     await ctx.reply(reply);
   } catch (error) {
     console.error("Fehler:", error);
-    await ctx.reply("Es gab ein technisches Problem 💔 Versuch es bitte später nochmal.");
+    await ctx.reply("Es gab ein technisches Problem ❤️ Versuch es bitte später nochmal.");
   }
 });
 
@@ -95,4 +95,5 @@ app.listen(PORT, () => {
 // === 🧹 Sauberes Beenden ===
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+}
 
