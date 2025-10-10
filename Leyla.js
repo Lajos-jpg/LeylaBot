@@ -1,34 +1,58 @@
 import { Telegraf } from "telegraf";
 import OpenAI from "openai";
+import express from "express";
 
-// Ersetze diese beiden Strings mit deinen echten Schlüsseln:
-const bot = new Telegraf("8368171133:AAG7rnNQ2OLKDUpGBmI59hkaiqVvaAch6jw");
-const openai = new OpenAI({ apiKey: "8368171133:AAG7rnNQ2OLKDUpGBmI59hkaiqVvaAch6jw" });
+// === 🔑 Environment Variablen ===
+const bot = new Telegraf(process.env.BOT_TOKEN);
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-// Wenn eine Nachricht kommt:
+// === 💬 BOT-LOGIK ===
 bot.on("message", async (ctx) => {
   const userMessage = ctx.message.text;
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // oder "gpt-4-turbo" falls verfügbar
+      model: "gpt-4o-mini", // du kannst auch "gpt-4-turbo" nehmen
       messages: [
         {
           role: "system",
           content:
-            "Du bist Leyla – eine freundliche, humorvolle und sympathische Chatpartnerin. Du redest natürlich und einfühlsam.",
+            "Du bist Leyla – eine freundliche, humorvolle und sympathische Chatpartnerin. Du redest empathisch, locker und natürlich.",
         },
-        { role: "user", content: userMessage },
+        {
+          role: "user",
+          content: userMessage,
+        },
       ],
     });
 
-    ctx.reply(response.choices[0].message.content);
+    const reply = response.choices[0].message.content;
+    await ctx.reply(reply);
+
   } catch (error) {
-    console.error("Fehler bei der Antwort:", error);
-    ctx.reply("Entschuldige, Leyla hatte gerade ein technisches Problem 🤖");
+    console.error("Fehler:", error);
+    await ctx.reply("Es gab ein technisches Problem 💔 Versuch es bitte später nochmal.");
   }
 });
 
+// === 🌐 EXPRESS-SERVER FÜR RENDER ===
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+  res.send("Leyla läuft ✅ (Webhook aktiv oder Polling)");
+});
+
+app.listen(PORT, () => {
+  console.log(`✅ Server läuft auf Port ${PORT}`);
+  console.log("🤖 Leyla ist online und wartet auf Nachrichten in Telegram!");
+});
+
+// === 🚀 TELEGRAM-BOT STARTEN ===
 bot.launch();
 
-console.log("🤖 Leyla ist online und wartet auf Nachrichten in Telegram!");
+// === 🧹 SAUBERES HERUNTERFAHREN (Render benötigt das) ===
+process.once("SIGINT", () => bot.stop("SIGINT"));
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
