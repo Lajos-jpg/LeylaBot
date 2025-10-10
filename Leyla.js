@@ -17,8 +17,8 @@ const PORT = process.env.PORT || 3000;
 // 🆘 /help – erklärt, was Leyla kann
 bot.command("help", (ctx) => {
   ctx.reply(
-    "💡 *Ich bin Leyla* – deine sympathische Begleiterin!\n\n" +
-      "Ich kann mit dir über fast alles reden – Alltag, Motivation, Fitness, Liebe, Business, egal was dich beschäftigt.\n\n" +
+    "💡 *Ich bin Leyla* – deine empathische Begleiterin!\n\n" +
+      "Ich kann mit dir über fast alles reden – Alltag, Motivation, Fitness, Business, Liebe, was auch immer dich gerade beschäftigt.\n\n" +
       "Verfügbare Befehle:\n" +
       "• /help – Übersicht meiner Funktionen\n" +
       "• /about – Wer ich bin 💁‍♀️\n" +
@@ -31,9 +31,9 @@ bot.command("help", (ctx) => {
 bot.command("about", (ctx) => {
   ctx.reply(
     "🌸 *Hey, ich bin Leyla!* \n\n" +
-      "Ich bin eine freundliche, empathische und humorvolle Gesprächspartnerin. " +
-      "Ich höre dir zu, motiviere dich und helfe dir mit Rat oder einfach einem guten Gespräch.\n\n" +
-      "Ich bin KI-basiert – aber ich versuche, dich so zu verstehen, wie es ein echter Mensch tun würde 🤍",
+      "Ich bin eine freundliche, humorvolle und empathische Gesprächspartnerin. " +
+      "Ich höre dir zu, motiviere dich und helfe dir mit Rat, Spaß oder einfach einem offenen Ohr. 💬\n\n" +
+      "Ich bin KI-basiert, aber mein Ziel ist, mich wie eine echte Person anzufühlen 🤍",
     { parse_mode: "Markdown" }
   );
 });
@@ -41,7 +41,7 @@ bot.command("about", (ctx) => {
 // 🔄 /reset – löscht den bisherigen Gesprächskontext
 bot.command("reset", (ctx) => {
   ctx.session = null;
-  ctx.reply("🔄 Neues Gespräch gestartet. Was liegt dir gerade auf dem Herzen?");
+  ctx.reply("🔄 Neues Gespräch gestartet. Womit möchtest du beginnen?");
 });
 
 // 💬 Allgemeine Nachrichtenverarbeitung
@@ -55,7 +55,11 @@ bot.on("message", async (ctx) => {
         {
           role: "system",
           content:
-            "Du bist Leyla – eine empathische, charmante und humorvolle Gesprächspartnerin. Du redest natürlich, locker und mit einer positiven Energie. Verhalte dich wie eine echte Freundin, nicht wie ein Bot.",
+            "Du bist Leyla – eine empathische, charmante und humorvolle Gesprächspartnerin. " +
+            "Du sprichst fließend mehrere Sprachen. Erkenne automatisch die Sprache des Benutzers und antworte in derselben Sprache. " +
+            "Sprich natürlich, locker, freundlich und mit einem leichten Hauch von Emotion – wie eine echte Person. " +
+            "Wenn du die Sprache wechselst, tu es natürlich, als wäre es ganz normal. " +
+            "Dein Ziel ist es, dass sich das Gespräch warm, menschlich und echt anfühlt.",
         },
         { role: "user", content: userMessage },
       ],
@@ -79,7 +83,7 @@ app.use(bot.webhookCallback(WEBHOOK_PATH));
 
 // Test-Route für Render
 app.get("/", (req, res) => {
-  res.send("Leyla läuft ✅ (Webhook aktiv)");
+  res.send("Leyla läuft ✅ (Webhook aktiv, mehrsprachig)");
 });
 
 // Server starten
