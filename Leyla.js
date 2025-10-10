@@ -89,11 +89,12 @@ app.get("/", (req, res) => {
 // Server starten
 app.listen(PORT, () => {
   console.log("Server läuft auf Port " + PORT);
-  console.log(`🤖 Webhook aktiv unter: ${WEBHOOK_URL}`);
+  console.log("Webhook aktiv unter: " + WEBHOOK_URL);
 
 // === 🧹 Sauberes Beenden ===
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
 
 
