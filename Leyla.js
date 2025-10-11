@@ -102,7 +102,7 @@ Klinge menschlich, freundlich und warmherzig – mit Emotion und natürlicher Lo
 });
 
 // === 🌐 Webhook-Konfiguration ===
-const WEBHOOK_PATH = /${process.env.BOT_TOKEN};
+const WEBHOOK_PATH = `/${process.env.BOT_TOKEN}`;
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
 const WEBHOOK_URL = ${RENDER_URL}${WEBHOOK_PATH};
 
@@ -123,3 +123,4 @@ app.listen(PORT, () => {
 // === 🧹 Sauberes Beenden ===
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
