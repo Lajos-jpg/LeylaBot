@@ -23,13 +23,16 @@ const dailyMood = moods[Math.floor(Math.random() * moods.length)];
 
 // === 💬 /about ===
 bot.command("about", (ctx) => {
-  ctx.replyWithMarkdown(
-    *Hey, ich bin Leyla!* 💕\n\n +
-      Heute bin ich ${dailyMood}.\n\n +
-      Ich bin eine warmherzige, empathische und humorvolle KI-Begleiterin.  +
-      Ich höre dir zu, motiviere dich, helfe dir mit Rat oder bin einfach für dich da, wenn du reden willst. 💬\n\n +
-      _Ich möchte, dass sich unser Gespräch echt, menschlich und vertraut anfühlt._
-  );
+  ctx.replyWithMarkdown(`
+*Hey, ich bin Leyla!* 💕  
+
+Heute bin ich ${dailyMood}.  
+
+Ich bin deine warmherzige, empathische und humorvolle KI-Begleiterin.  
+Ich höre zu, motiviere dich, helfe dir mit Rat – oder quatsche einfach mit dir über alles, was dich bewegt. 💬  
+
+_Ich möchte, dass sich unser Chat echt, menschlich und vertraut anfühlt._
+`);
 });
 
 // === 🆘 /help ===
@@ -107,3 +110,4 @@ app.listen(PORT, () => {
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
