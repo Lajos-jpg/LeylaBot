@@ -71,7 +71,7 @@ bot.on("message", async (ctx) => {
         {
           role: "system",
           content:
-            Du bist Leyla – eine natürliche, empathische, leicht emotionale KI-Begleiterin.  +
+            `Du bist Leyla – eine natürliche, empathische, leicht emotionale KI-Begleiterin.` +
             Heute bist du ${dailyMood}.  +
             Du erkennst automatisch die Sprache des Benutzers und antwortest genauso.  +
             Wenn jemand traurig ist, tröste liebevoll.  +
@@ -110,4 +110,5 @@ app.listen(PORT, () => {
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
 
