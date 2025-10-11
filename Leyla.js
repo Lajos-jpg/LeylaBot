@@ -76,8 +76,8 @@ app.post("/create-checkout-session", async (req, res) => {
       mode: "subscription",
       payment_method_types: ["card"],
       line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
-      success_url: ${process.env.RENDER_EXTERNAL_URL}/success,
-      cancel_url: ${process.env.RENDER_EXTERNAL_URL}/cancel,
+      success_url: `${process.env.RENDER_EXTERNAL_URL}/success`,
+      cancel_url: `${process.env.RENDER_EXTERNAL_URL}/cancel`,
       client_reference_id: tid || undefined,
     });
     res.redirect(303, session.url);
@@ -138,3 +138,4 @@ app.use(bot.webhookCallback(WEBHOOK_PATH));
 app.get("/", (_req, res) => res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`));
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
+
