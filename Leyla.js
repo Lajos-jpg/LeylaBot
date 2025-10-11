@@ -1,82 +1,111 @@
+import express from "express";
 import { Telegraf } from "telegraf";
 import OpenAI from "openai";
-import express from "express";
+import Stripe from "stripe";
 
-// === 🌍 ENV-Konfiguration ===
-const bot = new Telegraf(process.env.BOT_TOKEN);
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// === 🧠 Temporäres Gedächtnis ===
-const userMemory = new Map();
-const greetedUsers = new Set(); // 👋 Begrüßung merken
+const bot = new Telegraf(process.env.BOT_TOKEN);
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// === ☀️ Stimmung des Tages ===
-const moods = [
-  "fröhlich und energiegeladen ☀️",
-  "ruhig und entspannt 🌙",
-  "verspielt und charmant 💫",
-  "nachdenklich und tiefgründig 🌧️",
-  "motivierend und herzlich 🔥",
-];
+app.post(
+  "/webhook",
+  express.raw({ type: "application/json" }),
+  (req, res) => {
+    const sig = req.headers["stripe-signature"];
+    try {
+      const event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object;
+        const telegramId = String(session.client_reference_id || "").trim();
+        if (telegramId) {
+          premiumUsers.add(telegramId);
+          console.log("💎 Premium freigeschaltet:", telegramId);
+        }
+      }
+      res.json({ received: true });
+    } catch (err) {
+      console.error("Webhook-Fehler:", err.message);
+      res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+  }
+);
+
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+
+const premiumUsers = new Set();
+const moods = ["fröhlich ☀️", "ruhig 🌙", "charmant 💫", "tiefgründig 🌧️", "herzlich 🔥"];
 const dailyMood = moods[Math.floor(Math.random() * moods.length)];
 
-// === 💬 /about ===
-bot.command("about", (ctx) => {
-  ctx.replyWithMarkdown(`
-*Hey, ich bin Leyla!* 💕  
+function isPremium(id) {
+  return premiumUsers.has(String(id));
+}
 
-Heute bin ich ${dailyMood}.  
-
-Ich bin deine warmherzige, empathische und humorvolle KI-Begleiterin.  
-Ich höre dir zu, motiviere dich und helfe dir mit Rat – oder quatsche einfach mit dir über alles, was dich bewegt. 💬  
-
-_Ich möchte, dass sich unser Chat echt, menschlich und vertraut anfühlt._
-`);
+// 💳 Bezahlseite
+app.get("/premium", (req, res) => {
+  const tid = (req.query.tid || "").toString();
+  res.send(`
+    <html>
+      <head><meta charset="utf-8"><title>Leyla Premium</title></head>
+      <body style="font-family:Arial;max-width:700px;margin:40px auto;line-height:1.5">
+        <h1>💎 Zugang zu Leyla Premium</h1>
+        <p>Dieser Chat ist exklusiv für Mitglieder mit Premiumzugang.</p>
+        <p>Für nur 9,99 €/Monat erhältst du unlimitierten Zugang zu Leyla – deiner empathischen KI-Begleiterin.</p>
+        <form action="/create-checkout-session" method="POST">
+          <input type="hidden" name="tid" value="${tid}" />
+          <button type="submit" style="background:#8A2BE2;color:white;padding:12px 18px;border:0;border-radius:8px;cursor:pointer">
+            Zugang aktivieren 💎
+          </button>
+        </form>
+      </body>
+    </html>
+  `);
 });
 
-// === 🆘 /help ===
-bot.command("help", (ctx) => {
-  ctx.replyWithMarkdown(`
-🧭 *Ich kann Folgendes für dich tun:*  
-
-• /about – erzähle dir, wer ich bin 💁‍♀️  
-• /reset – starte das Gespräch neu 🔄  
-• /help – zeige diese Übersicht 📘  
-
-Schreib mir einfach frei – ich erkenne automatisch deine Sprache 🌍
-`);
+app.post("/create-checkout-session", async (req, res) => {
+  try {
+    const tid = (req.body.tid || "").toString();
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      payment_method_types: ["card"],
+      line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
+      success_url: ${process.env.RENDER_EXTERNAL_URL}/success,
+      cancel_url: ${process.env.RENDER_EXTERNAL_URL}/cancel,
+      client_reference_id: tid || undefined,
+    });
+    res.redirect(303, session.url);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Fehler beim Erstellen der Checkout-Session.");
+  }
 });
 
-// === 🔄 /reset ===
-bot.command("reset", (ctx) => {
-  userMemory.delete(ctx.chat.id);
-  greetedUsers.delete(ctx.chat.id);
-  ctx.reply("✨ Neues Gespräch gestartet. Wie fühlst du dich heute?");
-});
+app.get("/success", (_req, res) => res.send("✅ Zahlung erfolgreich! Du kannst jetzt mit Leyla chatten."));
+app.get("/cancel", (_req, res) => res.send("❌ Zahlung abgebrochen."));
 
-// === 💡 Nachrichtenerkennung ===
+// ==========================
+// 🤖 BOT
+// ==========================
 bot.on("message", async (ctx) => {
-  const userMessage = ctx.message.text;
-  const chatId = ctx.chat.id;
+  const tid = String(ctx.from.id);
 
-  // 👋 Automatische Begrüßung beim ersten Kontakt
-  if (!greetedUsers.has(chatId)) {
-    greetedUsers.add(chatId);
-    await ctx.replyWithMarkdown(`
-Hey, schön dich zu sehen! 🌸  
-Ich bin *Leyla*, deine digitale Gesprächspartnerin.  
-
-Heute bin ich ${dailyMood} – also, erzähl mir, wie dein Tag so läuft. 💬
-`);
+  if (!isPremium(tid)) {
+    const url = ${process.env.RENDER_EXTERNAL_URL}/premium?tid=${tid};
+    await ctx.replyWithMarkdown(
+      💎 *Dieser Chat ist exklusiv für Premium-Mitglieder.*\n\n +
+      Bitte aktiviere deinen Zugang hier:\n${url}
+    );
+    return;
   }
 
-  await ctx.sendChatAction("typing"); // „tippt gerade...“-Effekt
-
-  const history = userMemory.get(chatId) || [];
-  history.push({ role: "user", content: userMessage });
-  userMemory.set(chatId, history.slice(-10));
+  await ctx.sendChatAction("typing");
 
   try {
     const response = await openai.chat.completions.create({
@@ -84,44 +113,28 @@ Heute bin ich ${dailyMood} – also, erzähl mir, wie dein Tag so läuft. 💬
       messages: [
         {
           role: "system",
-          content: `Du bist Leyla – eine natürliche, empathische, charmante KI-Begleiterin. 
-Heute bist du ${dailyMood}. 
-Du erkennst automatisch die Sprache des Benutzers und antwortest in derselben Sprache. 
-Klinge menschlich, freundlich und warmherzig – mit Emotion und natürlicher Lockerheit. 💕`,
+          content: Du bist Leyla – eine empathische, natürliche KI-Begleiterin, heute ${dailyMood}. Sprich locker, warmherzig und freundlich.,
         },
-        ...history,
+        { role: "user", content: ctx.message.text },
       ],
     });
-
-    const reply = response.choices[0].message.content;
-    await ctx.reply(reply);
-  } catch (err) {
-    console.error("⚠️ Fehler:", err);
-    await ctx.reply("Oh nein 😔 Es gab gerade ein Problem. Versuch’s gleich nochmal!");
+    await ctx.reply(response.choices[0].message.content);
+} catch (err) {
+    console.error("Fehler:", err);
+    await ctx.reply("Oh, da ist was schiefgelaufen 😔 Versuch es bitte gleich nochmal.");
   }
 });
 
-// === 🌐 Webhook-Konfiguration ===
-const WEBHOOK_PATH = `/${process.env.BOT_TOKEN}`;
+// ==========================
+// 🌐 Webhook für Render
+// ==========================
+const WEBHOOK_PATH = /${process.env.BOT_TOKEN};
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
-const WEBHOOK_URL = `${RENDER_URL}${WEBHOOK_PATH}`;
+const WEBHOOK_URL = ${RENDER_URL}${WEBHOOK_PATH};
 
 await bot.telegram.setWebhook(WEBHOOK_URL);
 app.use(bot.webhookCallback(WEBHOOK_PATH));
 
-// === 🧭 Test-Route für Render ===
-app.get("/", (req, res) => {
-  res.send(`✅ Leyla ist aktiv – Stimmung heute: ${dailyMood}`);
-});
+app.get("/", (_req, res) => res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`));
 
-// === 🚀 Server starten ===
-app.listen(PORT, () => {
-  console.log(`🚀 Server läuft auf Port ${PORT}`);
-  console.log(`🌐 Webhook aktiv unter: ${WEBHOOK_URL}`);
-});
-
-// === 🧹 Sauberes Beenden ===
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
-
-
+app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
