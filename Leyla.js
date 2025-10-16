@@ -97,7 +97,8 @@ bot.on("message", async (ctx) => {
   const tid = String(ctx.from.id);
 
   if (!isPremium(tid)) {
-    const url = ${process.env.RENDER_EXTERNAL_URL}/premium?tid=${tid};
+    const url = `${process.env.RENDER_EXTERNAL_URL}/premium?tid=${tid}`;
+
     await ctx.replyWithMarkdown(
       💎 *Dieser Chat ist exklusiv für Premium-Mitglieder.*\n\n +
       Bitte aktiviere deinen Zugang hier:\n${url}
@@ -138,4 +139,5 @@ app.use(bot.webhookCallback(WEBHOOK_PATH));
 app.get("/", (_req, res) => res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`));
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
+
 
