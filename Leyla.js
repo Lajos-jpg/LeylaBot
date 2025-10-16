@@ -2,6 +2,7 @@ import express from "express";
 import { Telegraf } from "telegraf";
 import OpenAI from "openai";
 import Stripe from "stripe";
+import bodyParser from "body-parser";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -10,36 +11,16 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-app.post(
-  "/webhook",
-  express.raw({ type: "application/json" }),
-  (req, res) => {
-    const sig = req.headers["stripe-signature"];
-    try {
-      const event = stripe.webhooks.constructEvent(
-        req.body,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
-      if (event.type === "checkout.session.completed") {
-        const session = event.data.object;
-        const telegramId = String(session.client_reference_id || "").trim();
-        if (telegramId) {
-          premiumUsers.add(telegramId);
-          console.log("💎 Premium freigeschaltet:", telegramId);
-        }
-      }
-      res.json({ received: true });
-    } catch (err) {
-      console.error("Webhook-Fehler:", err.message);
-      res.status(400).send(`Webhook Error: ${err.message}`);
-    }
-  }
-);
-
+// =====================================
+// 🧩 MIDDLEWARES
+// =====================================
+app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+// =====================================
+// 💎 PREMIUM USER SPEICHER
+// =====================================
 const premiumUsers = new Set();
 const moods = ["fröhlich ☀️", "ruhig 🌙", "charmant 💫", "tiefgründig 🌧️", "herzlich 🔥"];
 const dailyMood = moods[Math.floor(Math.random() * moods.length)];
@@ -48,7 +29,36 @@ function isPremium(id) {
   return premiumUsers.has(String(id));
 }
 
-// 💳 Bezahlseite
+// =====================================
+// 💳 STRIPE WEBHOOK
+// =====================================
+app.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  try {
+    const event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object;
+      const telegramId = String(session.client_reference_id || "").trim();
+      if (telegramId) {
+        premiumUsers.add(telegramId);
+        console.log("💎 Premium freigeschaltet:", telegramId);
+      }
+    }
+    res.json({ received: true });
+  } catch (err) {
+    console.error("Webhook-Fehler:", err.message);
+    res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+});
+
+// =====================================
+// 💰 BEZAHLSEITE
+// =====================================
 app.get("/premium", (req, res) => {
   const tid = (req.query.tid || "").toString();
   res.send(`
@@ -69,6 +79,9 @@ app.get("/premium", (req, res) => {
   `);
 });
 
+// =====================================
+// 🧾 CHECKOUT-SESSION ERSTELLEN
+// =====================================
 app.post("/create-checkout-session", async (req, res) => {
   try {
     const tid = (req.body.tid || "").toString();
@@ -90,9 +103,9 @@ app.post("/create-checkout-session", async (req, res) => {
 app.get("/success", (_req, res) => res.send("✅ Zahlung erfolgreich! Du kannst jetzt mit Leyla chatten."));
 app.get("/cancel", (_req, res) => res.send("❌ Zahlung abgebrochen."));
 
-// ==========================
-// 🤖 BOT
-// ==========================
+// =====================================
+// 🤖 TELEGRAM BOT LOGIK
+// =====================================
 bot.on("message", async (ctx) => {
   const tid = String(ctx.from.id);
 
@@ -101,13 +114,12 @@ bot.on("message", async (ctx) => {
 
     const premiumMessage = `💎 *Dieser Chat ist exklusiv für Premium-Mitglieder.*
 
-Bitte besuche den folgenden Link, um Zugriff zu erhalten:
+Bitte aktiviere deinen Zugang hier:
 👉 [Jetzt Zugang aktivieren](${url})`;
 
     await ctx.replyWithMarkdown(premiumMessage);
     return;
-}
-
+  }
 
   await ctx.sendChatAction("typing");
 
@@ -123,23 +135,24 @@ Bitte besuche den folgenden Link, um Zugriff zu erhalten:
       ],
     });
     await ctx.reply(response.choices[0].message.content);
-} catch (err) {
+  } catch (err) {
     console.error("Fehler:", err);
     await ctx.reply("Oh, da ist was schiefgelaufen 😔 Versuch es bitte gleich nochmal.");
   }
 });
 
-// ==========================
-// 🌐 Webhook für Render
-// ==========================
+// =====================================
+// 🌐 RENDER WEBHOOK
+// =====================================
 const WEBHOOK_PATH = `/${process.env.BOT_TOKEN}`;
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
 const WEBHOOK_URL = `${RENDER_URL}${WEBHOOK_PATH}`;
 
-await bot.telegram.setWebhook(WEBHOOK_URL);
+bot.telegram.setWebhook(WEBHOOK_URL);
 app.use(bot.webhookCallback(WEBHOOK_PATH));
 
 app.get("/", (_req, res) => res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`));
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
+
 
