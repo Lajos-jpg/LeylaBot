@@ -117,7 +117,7 @@ Bitte besuche den folgenden Link, um Zugriff zu erhalten:
       messages: [
         {
           role: "system",
-          content: Du bist Leyla – eine empathische, natürliche KI-Begleiterin, heute ${dailyMood}. Sprich locker, warmherzig und freundlich.,
+          content: `Du bist Leyla – eine empathische, natürliche KI-Begleiterin, heute ${dailyMood}. Sprich locker, warmherzig und freundlich.`,
         },
         { role: "user", content: ctx.message.text },
       ],
@@ -142,6 +142,7 @@ app.use(bot.webhookCallback(WEBHOOK_PATH));
 app.get("/", (_req, res) => res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`));
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
+
 
 
 
