@@ -3,6 +3,7 @@ import { Telegraf } from "telegraf";
 import OpenAI from "openai";
 import Stripe from "stripe";
 import bodyParser from "body-parser";
+import fs from "fs";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,6 +13,33 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // =====================================
+// 💾 PREMIUM USER - DATEI HANDLING
+// =====================================
+const premiumFile = "./premiumUsers.json";
+
+// Lese gespeicherte Premium-Nutzer beim Start ein
+let premiumUsers = new Set();
+if (fs.existsSync(premiumFile)) {
+  try {
+    const data = JSON.parse(fs.readFileSync(premiumFile, "utf8"));
+    premiumUsers = new Set(data);
+    console.log(`💾 ${premiumUsers.size} Premium-User geladen.`);
+  } catch (err) {
+    console.error("❌ Fehler beim Laden von premiumUsers.json:", err);
+  }
+}
+
+// Funktion zum Speichern
+function savePremiumUsers() {
+  try {
+    fs.writeFileSync(premiumFile, JSON.stringify([...premiumUsers]), "utf8");
+    console.log("✅ Premium-User gespeichert.");
+  } catch (err) {
+    console.error("❌ Fehler beim Speichern von Premium-Usern:", err);
+  }
+}
+
+// =====================================
 // 🧩 MIDDLEWARES
 // =====================================
 app.use(bodyParser.json());
@@ -19,9 +47,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
 // =====================================
-// 💎 PREMIUM USER SPEICHER
+// 💎 PREMIUM CHECK FUNKTION
 // =====================================
-const premiumUsers = new Set();
 const moods = ["fröhlich ☀️", "ruhig 🌙", "charmant 💫", "tiefgründig 🌧️", "herzlich 🔥"];
 const dailyMood = moods[Math.floor(Math.random() * moods.length)];
 
@@ -46,6 +73,7 @@ app.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
       const telegramId = String(session.client_reference_id || "").trim();
       if (telegramId) {
         premiumUsers.add(telegramId);
+        savePremiumUsers(); // 💾 sofort speichern
         console.log("💎 Premium freigeschaltet:", telegramId);
       }
     }
@@ -154,5 +182,3 @@ app.use(bot.webhookCallback(WEBHOOK_PATH));
 app.get("/", (_req, res) => res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`));
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
-
-
