@@ -39,12 +39,12 @@ function savePremiumUsers() {
   }
 }
 
-// =====================================
 // 🧩 MIDDLEWARES
-// =====================================
-app.use(bodyParser.json());
+// Wichtig: JSON erst NACH dem Webhook aktivieren, sonst zerstört es die Stripe-Signatur
 app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+
+// Der Webhook braucht "raw body", daher JSON nicht global aktivieren!
+
 
 // =====================================
 // 💎 PREMIUM CHECK FUNKTION
@@ -198,5 +198,6 @@ app.use(bot.webhookCallback(WEBHOOK_PATH));
 app.get("/", (_req, res) => res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`));
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
+
 
 
