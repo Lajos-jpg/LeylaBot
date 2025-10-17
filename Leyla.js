@@ -57,31 +57,37 @@ function isPremium(id) {
 }
 
 // =====================================
-// 💳 STRIPE WEBHOOK (Fix für Sandbox + Render)
+// 💳 STRIPE WEBHOOK – erweiterte Diagnose
 // =====================================
 app.post(
   "/webhook",
-  bodyParser.raw({ type: "*/*" }), // Wichtig! Damit Stripe-Signatur richtig erkannt wird
+  bodyParser.raw({ type: "*/*" }),
   (req, res) => {
-    const sig = req.headers["stripe-signature"];
-    let event;
+    console.log("📨 Anfrage von Stripe empfangen...");
 
+    const sig = req.headers["stripe-signature"];
+    console.log("Header stripe-signature:", sig);
+
+    let event;
     try {
       event = stripe.webhooks.constructEvent(
         req.body,
         sig,
         process.env.STRIPE_WEBHOOK_SECRET
       );
-      console.log("📩 Webhook erhalten:", event.type);
+      console.log("✅ Webhook-Ereignis erkannt:", event.type);
 
       if (event.type === "checkout.session.completed") {
         const session = event.data.object;
-        const telegramId = String(session.client_reference_id || "").trim();
+        console.log("🧾 SESSION-DATEN:", session);
 
+        const telegramId = String(session.client_reference_id || "").trim();
         if (telegramId) {
           premiumUsers.add(telegramId);
           savePremiumUsers();
           console.log("💎 Premium freigeschaltet:", telegramId);
+        } else {
+          console.log("⚠️ Keine Telegram-ID in session.client_reference_id gefunden");
         }
       }
 
@@ -92,6 +98,7 @@ app.post(
     }
   }
 );
+
 
 // =====================================
 // 💰 BEZAHLSEITE
@@ -191,4 +198,5 @@ app.use(bot.webhookCallback(WEBHOOK_PATH));
 app.get("/", (_req, res) => res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`));
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
+
 
