@@ -17,7 +17,6 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // =====================================
 const premiumFile = "./premiumUsers.json";
 
-// Lese gespeicherte Premium-Nutzer beim Start ein
 let premiumUsers = new Set();
 if (fs.existsSync(premiumFile)) {
   try {
@@ -29,7 +28,6 @@ if (fs.existsSync(premiumFile)) {
   }
 }
 
-// Funktion zum Speichern
 function savePremiumUsers() {
   try {
     fs.writeFileSync(premiumFile, JSON.stringify([...premiumUsers]), "utf8");
@@ -39,12 +37,12 @@ function savePremiumUsers() {
   }
 }
 
+// =====================================
 // 🧩 MIDDLEWARES
-// Wichtig: JSON erst NACH dem Webhook aktivieren, sonst zerstört es die Stripe-Signatur
+// =====================================
+// ⚠️ Wichtig: JSON-Parser erst NACH dem Stripe-Webhook aktivieren,
+// sonst wird der Request-Body verändert und Stripe kann die Signatur nicht prüfen.
 app.use(express.urlencoded({ extended: true }));
-
-// Der Webhook braucht "raw body", daher JSON nicht global aktivieren!
-
 
 // =====================================
 // 💎 PREMIUM CHECK FUNKTION
@@ -57,14 +55,13 @@ function isPremium(id) {
 }
 
 // =====================================
-// 💳 STRIPE WEBHOOK – erweiterte Diagnose
+// 💳 STRIPE WEBHOOK – Sandbox/Live Fix + Diagnose
 // =====================================
 app.post(
   "/webhook",
   bodyParser.raw({ type: "*/*" }),
   (req, res) => {
     console.log("📨 Anfrage von Stripe empfangen...");
-
     const sig = req.headers["stripe-signature"];
     console.log("Header stripe-signature:", sig);
 
@@ -75,6 +72,7 @@ app.post(
         sig,
         process.env.STRIPE_WEBHOOK_SECRET
       );
+
       console.log("✅ Webhook-Ereignis erkannt:", event.type);
 
       if (event.type === "checkout.session.completed") {
@@ -99,6 +97,11 @@ app.post(
   }
 );
 
+// =====================================
+// ✅ Jetzt JSON aktivieren (nach dem Webhook!)
+// =====================================
+app.use(bodyParser.json());
+app.use(express.json());
 
 // =====================================
 // 💰 BEZAHLSEITE
@@ -111,7 +114,7 @@ app.get("/premium", (req, res) => {
       <body style="font-family:Arial;max-width:700px;margin:40px auto;line-height:1.5">
         <h1>💎 Zugang zu Leyla Premium</h1>
         <p>Dieser Chat ist exklusiv für Mitglieder mit Premiumzugang.</p>
-        <p>Für nur 9,99 €/Monat erhältst du unlimitierten Zugang zu Leyla – deiner empathischen KI-Begleiterin.</p>
+        <p>Für nur <b>29,99 €/Monat</b> erhältst du unlimitierten Zugang zu Leyla – deiner empathischen KI-Begleiterin.</p>
         <form action="/create-checkout-session" method="POST">
           <input type="hidden" name="tid" value="${tid}" />
           <button type="submit" style="background:#8A2BE2;color:white;padding:12px 18px;border:0;border-radius:8px;cursor:pointer">
@@ -144,8 +147,12 @@ app.post("/create-checkout-session", async (req, res) => {
   }
 });
 
-app.get("/success", (_req, res) => res.send("✅ Zahlung erfolgreich! Du kannst jetzt mit Leyla chatten."));
-app.get("/cancel", (_req, res) => res.send("❌ Zahlung abgebrochen."));
+app.get("/success", (_req, res) =>
+  res.send("✅ Zahlung erfolgreich! Du kannst jetzt mit Leyla chatten.")
+);
+app.get("/cancel", (_req, res) =>
+  res.send("❌ Zahlung abgebrochen.")
+);
 
 // =====================================
 // 🤖 TELEGRAM BOT LOGIK
@@ -155,7 +162,6 @@ bot.on("message", async (ctx) => {
 
   if (!isPremium(tid)) {
     const url = `${process.env.RENDER_EXTERNAL_URL}/premium?tid=${tid}`;
-
     const premiumMessage = `💎 *Dieser Chat ist exklusiv für Premium-Mitglieder.*
 
 Bitte aktiviere deinen Zugang hier:
@@ -195,9 +201,8 @@ const WEBHOOK_URL = `${RENDER_URL}${WEBHOOK_PATH}`;
 bot.telegram.setWebhook(WEBHOOK_URL);
 app.use(bot.webhookCallback(WEBHOOK_PATH));
 
-app.get("/", (_req, res) => res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`));
+app.get("/", (_req, res) =>
+  res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`)
+);
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
-
-
-
