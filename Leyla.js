@@ -57,32 +57,41 @@ function isPremium(id) {
 }
 
 // =====================================
-// 💳 STRIPE WEBHOOK
+// 💳 STRIPE WEBHOOK (Fix für Sandbox + Render)
 // =====================================
-app.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
-  const sig = req.headers["stripe-signature"];
-  try {
-    const event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
+app.post(
+  "/webhook",
+  bodyParser.raw({ type: "*/*" }), // Wichtig! Damit Stripe-Signatur richtig erkannt wird
+  (req, res) => {
+    const sig = req.headers["stripe-signature"];
+    let event;
 
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object;
-      const telegramId = String(session.client_reference_id || "").trim();
-      if (telegramId) {
-        premiumUsers.add(telegramId);
-        savePremiumUsers(); // 💾 sofort speichern
-        console.log("💎 Premium freigeschaltet:", telegramId);
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+      console.log("📩 Webhook erhalten:", event.type);
+
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object;
+        const telegramId = String(session.client_reference_id || "").trim();
+
+        if (telegramId) {
+          premiumUsers.add(telegramId);
+          savePremiumUsers();
+          console.log("💎 Premium freigeschaltet:", telegramId);
+        }
       }
+
+      res.json({ received: true });
+    } catch (err) {
+      console.error("❌ Webhook-Fehler:", err.message);
+      res.status(400).send(`Webhook Error: ${err.message}`);
     }
-    res.json({ received: true });
-  } catch (err) {
-    console.error("Webhook-Fehler:", err.message);
-    res.status(400).send(`Webhook Error: ${err.message}`);
   }
-});
+);
 
 // =====================================
 // 💰 BEZAHLSEITE
@@ -182,3 +191,4 @@ app.use(bot.webhookCallback(WEBHOOK_PATH));
 app.get("/", (_req, res) => res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`));
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
+
