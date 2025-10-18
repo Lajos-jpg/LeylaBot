@@ -40,8 +40,6 @@ function savePremiumUsers() {
 // =====================================
 // 🧩 MIDDLEWARES
 // =====================================
-// ⚠️ Wichtig: JSON-Parser erst NACH dem Stripe-Webhook aktivieren,
-// sonst wird der Request-Body verändert und Stripe kann die Signatur nicht prüfen.
 app.use(express.urlencoded({ extended: true }));
 
 // =====================================
@@ -55,50 +53,44 @@ function isPremium(id) {
 }
 
 // =====================================
-// 💳 STRIPE WEBHOOK – Sandbox/Live Fix + Diagnose
+// 💳 STRIPE WEBHOOK – Sandbox/Live kompatibel
 // =====================================
-app.post(
-  "/webhook",
-  bodyParser.raw({ type: "*/*" }),
-  (req, res) => {
-    console.log("📨 Anfrage von Stripe empfangen...");
-    const sig = req.headers["stripe-signature"];
-    console.log("Header stripe-signature:", sig);
+const localWebhookSecret = "whsec_dce13903938b92de5eb4268a61e82c53a1cabbc58139fc6fe8112f171b19e318"; // 👈 dein echter CLI-Schlüssel
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || localWebhookSecret;
 
-    let event;
-    try {
-      event = stripe.webhooks.constructEvent(
-        req.body,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
+app.post("/webhook", bodyParser.raw({ type: "application/json" }), (req, res) => {
+  console.log("📨 Stripe-Webhook erhalten...");
 
-      console.log("✅ Webhook-Ereignis erkannt:", event.type);
+  const sig = req.headers["stripe-signature"];
+  let event;
 
-      if (event.type === "checkout.session.completed") {
-        const session = event.data.object;
-        console.log("🧾 SESSION-DATEN:", session);
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+    console.log("✅ Webhook erkannt:", event.type);
 
-        const telegramId = String(session.client_reference_id || "").trim();
-        if (telegramId) {
-          premiumUsers.add(telegramId);
-          savePremiumUsers();
-          console.log("💎 Premium freigeschaltet:", telegramId);
-        } else {
-          console.log("⚠️ Keine Telegram-ID in session.client_reference_id gefunden");
-        }
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object;
+      console.log("🧾 SESSION:", session);
+
+      const telegramId = String(session.client_reference_id || "").trim();
+      if (telegramId) {
+        premiumUsers.add(telegramId);
+        savePremiumUsers();
+        console.log("💎 Premium freigeschaltet für:", telegramId);
+      } else {
+        console.log("⚠️ Keine Telegram-ID in session.client_reference_id gefunden");
       }
-
-      res.json({ received: true });
-    } catch (err) {
-      console.error("❌ Webhook-Fehler:", err.message);
-      res.status(400).send(`Webhook Error: ${err.message}`);
     }
+
+    res.json({ received: true });
+  } catch (err) {
+    console.error("❌ Fehler im Webhook:", err.message);
+    res.status(400).send(`Webhook Error: ${err.message}`);
   }
-);
+});
 
 // =====================================
-// ✅ Jetzt JSON aktivieren (nach dem Webhook!)
+// ✅ JSON aktivieren (nach dem Webhook!)
 // =====================================
 app.use(bodyParser.json());
 app.use(express.json());
@@ -147,12 +139,8 @@ app.post("/create-checkout-session", async (req, res) => {
   }
 });
 
-app.get("/success", (_req, res) =>
-  res.send("✅ Zahlung erfolgreich! Du kannst jetzt mit Leyla chatten.")
-);
-app.get("/cancel", (_req, res) =>
-  res.send("❌ Zahlung abgebrochen.")
-);
+app.get("/success", (_req, res) => res.send("✅ Zahlung erfolgreich! Du kannst jetzt mit Leyla chatten."));
+app.get("/cancel", (_req, res) => res.send("❌ Zahlung abgebrochen."));
 
 // =====================================
 // 🤖 TELEGRAM BOT LOGIK
@@ -201,8 +189,7 @@ const WEBHOOK_URL = `${RENDER_URL}${WEBHOOK_PATH}`;
 bot.telegram.setWebhook(WEBHOOK_URL);
 app.use(bot.webhookCallback(WEBHOOK_PATH));
 
-app.get("/", (_req, res) =>
-  res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`)
-);
+app.get("/", (_req, res) => res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`));
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
+
