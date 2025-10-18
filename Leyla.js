@@ -126,4 +126,111 @@ app.get("/premium", (req, res) => {
 
 // =====================================
 // 🧾 STRIPE CHECKOUT-SESSION (POST)
-// =========================
+// =====================================
+app.post("/create-checkout-session", async (req, res) => {
+  try {
+    const tid = (req.body.tid || "").toString().trim();
+    const PRICE_ID = process.env.STRIPE_PRICE_ID;
+    const BASE_URL = baseUrl || "";
+
+    if (!PRICE_ID) {
+      console.error("❌ STRIPE_PRICE_ID fehlt – kann Session nicht erstellen.");
+      return res.status(500).send("Preis nicht konfiguriert. Bitte Admin informieren.");
+    }
+
+    if (!BASE_URL) {
+      console.error("❌ RENDER_EXTERNAL_URL fehlt – success/cancel URLs unklar.");
+      return res.status(500).send("Server-URL nicht konfiguriert.");
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      payment_method_types: ["card"],
+      line_items: [{ price: PRICE_ID, quantity: 1 }],
+      success_url: `${BASE_URL}/success?cs={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${BASE_URL}/cancel`,
+      client_reference_id: tid || undefined,
+    });
+
+    console.log("🧾 Checkout-Session erstellt:", session.id);
+    return res.redirect(303, session.url);
+  } catch (err) {
+    console.error("❌ Fehler beim Erstellen der Checkout-Session:", err);
+    return res.status(400).send("Fehler beim Checkout: " + (err.message || "Unbekannt"));
+  }
+});
+
+app.get("/success", (_req, res) => {
+  res.send("✅ Zahlung erfolgreich! Du kannst jetzt mit Leyla chatten.");
+});
+
+app.get("/cancel", (_req, res) => {
+  res.send("❌ Zahlung abgebrochen – du wurdest nicht belastet.");
+});
+
+// =====================================
+// 🤖 TELEGRAM BOT LOGIK
+// =====================================
+bot.on("message", async (ctx) => {
+  const tid = String(ctx.from.id);
+  console.log("👤 Nachricht von:", tid, ctx.from.username ? `(@${ctx.from.username})` : "");
+
+  if (!isPremium(tid)) {
+    const url = `${baseUrl}/premium?tid=${tid}`;
+    const premiumMessage = `💎 *Dieser Chat ist exklusiv für Premium-Mitglieder.*
+
+Bitte aktiviere deinen Zugang hier:
+👉 [Jetzt Zugang aktivieren](${url})`;
+    await ctx.replyWithMarkdown(premiumMessage);
+    return;
+  }
+
+  await ctx.sendChatAction("typing");
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `Du bist Leyla – eine empathische, natürliche KI-Begleiterin, heute ${dailyMood}. Sprich locker, warmherzig und freundlich.`,
+        },
+        { role: "user", content: ctx.message.text || "" },
+      ],
+    });
+    await ctx.reply(response.choices?.[0]?.message?.content || "✨");
+  } catch (err) {
+    console.error("❌ OpenAI-Fehler:", err);
+    await ctx.reply("Oh, da ist was schiefgelaufen 😔 Versuch es bitte gleich nochmal.");
+  }
+});
+
+// =====================================
+// 🌐 TELEGRAM WEBHOOK / POLLING-FALLBACK
+// =====================================
+const WEBHOOK_PATH = `/${process.env.BOT_TOKEN}`;
+const WEBHOOK_URL = baseUrl ? `${baseUrl}${WEBHOOK_PATH}` : null;
+
+if (WEBHOOK_URL) {
+  bot.telegram.setWebhook(WEBHOOK_URL)
+    .then(() => console.log("✅ Telegram-Webhook gesetzt:", WEBHOOK_URL))
+    .catch(err => console.error("❌ Fehler beim Setzen des Telegram-Webhooks:", err.message));
+  app.use(bot.webhookCallback(WEBHOOK_PATH));
+} else {
+  console.warn("⚠️ Kein RENDER_EXTERNAL_URL gefunden. Starte im Polling-Modus.");
+  bot.launch().then(() => console.log("🤖 Bot läuft im Polling-Modus."));
+}
+
+// =====================================
+// 🩺 HEALTH & ROOT ROUTES
+// =====================================
+app.get("/health", (_req, res) => res.status(200).send("ok"));
+app.get("/", (_req, res) => res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`));
+
+// =====================================
+// 🚀 SERVER START
+// =====================================
+process.on("uncaughtException", err => console.error("❌ Uncaught Exception:", err));
+process.on("unhandledRejection", err => console.error("❌ Unhandled Rejection:", err));
+
+app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
