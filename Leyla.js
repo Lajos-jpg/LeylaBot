@@ -5,8 +5,17 @@ import Stripe from "stripe";
 import bodyParser from "body-parser";
 import fs from "fs";
 
+// =====================================
+// 🔧 APP BASICS
+// =====================================
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+if (!process.env.BOT_TOKEN) console.warn("⚠️ BOT_TOKEN fehlt!");
+if (!process.env.OPENAI_API_KEY) console.warn("⚠️ OPENAI_API_KEY fehlt!");
+if (!process.env.STRIPE_SECRET_KEY) console.warn("⚠️ STRIPE_SECRET_KEY fehlt!");
+if (!process.env.RENDER_EXTERNAL_URL) console.warn("⚠️ RENDER_EXTERNAL_URL fehlt!");
+if (!process.env.STRIPE_PRICE_ID) console.warn("⚠️ STRIPE_PRICE_ID fehlt (Stripe > Products > Price).");
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -39,46 +48,33 @@ function savePremiumUsers() {
 
 // =====================================
 // 🧩 MIDDLEWARES
+// 1) Webhook braucht RAW (vor JSON!)
+// 2) Danach normale Parser für alles andere
 // =====================================
-app.use(express.urlencoded({ extended: true }));
-
-// =====================================
-// 💎 PREMIUM CHECK FUNKTION
-// =====================================
-const moods = ["fröhlich ☀️", "ruhig 🌙", "charmant 💫", "tiefgründig 🌧️", "herzlich 🔥"];
-const dailyMood = moods[Math.floor(Math.random() * moods.length)];
-
-function isPremium(id) {
-  return premiumUsers.has(String(id));
-}
-
-// =====================================
-// 💳 STRIPE WEBHOOK – Sandbox/Live kompatibel
-// =====================================
-const localWebhookSecret = "whsec_dce13903938b92de5eb4268a61e82c53a1cabbc58139fc6fe8112f171b19e318"; // 👈 dein echter CLI-Schlüssel
-const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || localWebhookSecret;
-
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
 app.post("/webhook", bodyParser.raw({ type: "application/json" }), (req, res) => {
-  console.log("📨 Stripe-Webhook erhalten...");
+  console.log("📨 Stripe-Webhook eingegangen …");
+  if (!endpointSecret) {
+    console.error("❌ STRIPE_WEBHOOK_SECRET fehlt – Webhook kann nicht verifiziert werden.");
+    return res.status(500).send("Webhook secret not configured.");
+  }
 
   const sig = req.headers["stripe-signature"];
   let event;
-
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
     console.log("✅ Webhook erkannt:", event.type);
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
-      console.log("🧾 SESSION:", session);
-
       const telegramId = String(session.client_reference_id || "").trim();
+      console.log("🧾 SESSION-ID:", session.id, "→ client_reference_id (tid):", telegramId || "(leer)");
       if (telegramId) {
         premiumUsers.add(telegramId);
         savePremiumUsers();
         console.log("💎 Premium freigeschaltet für:", telegramId);
       } else {
-        console.log("⚠️ Keine Telegram-ID in session.client_reference_id gefunden");
+        console.log("⚠️ Keine Telegram-ID in session.client_reference_id gefunden.");
       }
     }
 
@@ -89,119 +85,45 @@ app.post("/webhook", bodyParser.raw({ type: "application/json" }), (req, res) =>
   }
 });
 
-// =====================================
-// ✅ JSON aktivieren (nach dem Webhook!)
-// =====================================
+// Nach dem Webhook erst JSON-Parser aktivieren
 app.use(bodyParser.json());
-app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // =====================================
-// 💰 BEZAHLSEITE
+// 💡 KLEINE HILFSFUNKTIONEN
+// =====================================
+const moods = ["fröhlich ☀️", "ruhig 🌙", "charmant 💫", "tiefgründig 🌧️", "herzlich 🔥"];
+const dailyMood = moods[Math.floor(Math.random() * moods.length)];
+const isPremium = (id) => premiumUsers.has(String(id));
+const baseUrl = (process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/, "");
+
+// =====================================
+// 💰 PREMIUM-SEITE (GET)
 // =====================================
 app.get("/premium", (req, res) => {
   const tid = (req.query.tid || "").toString();
   res.send(`
     <html>
-      <head><meta charset="utf-8"><title>Leyla Premium</title></head>
-      <body style="font-family:Arial;max-width:700px;margin:40px auto;line-height:1.5">
+      <head>
+        <meta charset="utf-8">
+        <title>Leyla Premium</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+      </head>
+      <body style="font-family:Arial,Helvetica,sans-serif;max-width:720px;margin:40px auto;padding:0 16px;line-height:1.55">
         <h1>💎 Zugang zu Leyla Premium</h1>
-        <p>Dieser Chat ist exklusiv für Mitglieder mit Premiumzugang.</p>
-        <p>Für nur <b>29,99 €/Monat</b> erhältst du unlimitierten Zugang zu Leyla – deiner empathischen KI-Begleiterin.</p>
+        <p>Für <b>29,99 € / Monat</b> erhältst du unlimitierten Zugang zu Leyla – deiner empathischen KI-Begleiterin.</p>
         <form action="/create-checkout-session" method="POST">
           <input type="hidden" name="tid" value="${tid}" />
-          <button type="submit" style="background:#8A2BE2;color:white;padding:12px 18px;border:0;border-radius:8px;cursor:pointer">
-            Zugang aktivieren 💎
+          <button type="submit" style="background:#7c3aed;color:#fff;padding:12px 18px;border:0;border-radius:10px;cursor:pointer">
+            Jetzt Premium aktivieren 💳
           </button>
         </form>
+        <p style="margin-top:24px;color:#555">Deine Telegram-ID wird nur genutzt, um deinen Premium-Status freizuschalten.</p>
       </body>
     </html>
   `);
 });
 
 // =====================================
-// 🧾 CHECKOUT-SESSION ERSTELLEN
-// =====================================
-app.post("/create-checkout-session", async (req, res) => {
-  try {
-    const tid = (req.body.tid || "").toString();
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      payment_method_types: ["card"],
-      line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
-      success_url: `${process.env.RENDER_EXTERNAL_URL}/success`,
-      cancel_url: `${process.env.RENDER_EXTERNAL_URL}/cancel`,
-      client_reference_id: tid || undefined,
-    });
-    res.redirect(303, session.url);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Fehler beim Erstellen der Checkout-Session.");
-  }
-});
-
-app.get("/success", (_req, res) => res.send("✅ Zahlung erfolgreich! Du kannst jetzt mit Leyla chatten."));
-app.get("/cancel", (_req, res) => res.send("❌ Zahlung abgebrochen."));
-
-// =====================================
-// 🤖 TELEGRAM BOT LOGIK
-// =====================================
-bot.on("message", async (ctx) => {
-  const tid = String(ctx.from.id);
-
-  if (!isPremium(tid)) {
-    const url = `${process.env.RENDER_EXTERNAL_URL}/premium?tid=${tid}`;
-    const premiumMessage = `💎 *Dieser Chat ist exklusiv für Premium-Mitglieder.*
-
-Bitte aktiviere deinen Zugang hier:
-👉 [Jetzt Zugang aktivieren](${url})`;
-
-    await ctx.replyWithMarkdown(premiumMessage);
-    return;
-  }
-
-  await ctx.sendChatAction("typing");
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: `Du bist Leyla – eine empathische, natürliche KI-Begleiterin, heute ${dailyMood}. Sprich locker, warmherzig und freundlich.`,
-        },
-        { role: "user", content: ctx.message.text },
-      ],
-    });
-    await ctx.reply(response.choices[0].message.content);
-  } catch (err) {
-    console.error("Fehler:", err);
-    await ctx.reply("Oh, da ist was schiefgelaufen 😔 Versuch es bitte gleich nochmal.");
-  }
-});
-
-// =====================================
-// 🌐 RENDER WEBHOOK
-// =====================================
-const WEBHOOK_PATH = `/${process.env.BOT_TOKEN}`;
-const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
-const WEBHOOK_URL = `${RENDER_URL}${WEBHOOK_PATH}`;
-
-bot.telegram.setWebhook(WEBHOOK_URL);
-
-app.use(bot.webhookCallback(WEBHOOK_PATH));
-
-// =====================================
-// 💎 ROOT ROUTE (MUSS ZUM SCHLUSS STEHEN!)
-// =====================================
-app.get("/", (_req, res) => {
-  res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`);
-});
-
-// =====================================
-// 🚀 SERVER START
-// =====================================
-app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
-
-
-
-
+// 🧾 STRIPE CHECKOUT-SESSION (POST)
+// =========================
