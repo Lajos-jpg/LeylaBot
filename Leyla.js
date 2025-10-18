@@ -189,7 +189,17 @@ const WEBHOOK_URL = `${RENDER_URL}${WEBHOOK_PATH}`;
 bot.telegram.setWebhook(WEBHOOK_URL);
 app.use(bot.webhookCallback(WEBHOOK_PATH));
 
-app.get("/", (_req, res) => res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`));
+// =====================================
+// 💎 ROOT ROUTE (MUSS ZUM SCHLUSS STEHEN!)
+// =====================================
+app.get("/", (_req, res) => {
+  res.send(`💎 Leyla ist aktiv – Premium Only (${dailyMood})`);
+});
 
+// =====================================
+// 🚀 SERVER START
+// =====================================
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
+
+
 
