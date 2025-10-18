@@ -187,6 +187,7 @@ const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
 const WEBHOOK_URL = `${RENDER_URL}${WEBHOOK_PATH}`;
 
 bot.telegram.setWebhook(WEBHOOK_URL);
+
 app.use(bot.webhookCallback(WEBHOOK_PATH));
 
 // =====================================
@@ -200,6 +201,7 @@ app.get("/", (_req, res) => {
 // 🚀 SERVER START
 // =====================================
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
+
 
 
 
