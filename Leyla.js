@@ -179,19 +179,13 @@ async function sendVoiceReply(ctx, text) {
 
     const languagePrompt =
       userLang === "de"
-        ? `Sprich in klarer, natürlicher deutscher Sprache, ${mood === "soft"
-            ? "ruhig und sanft"
-            : mood === "bright"
-            ? "fröhlich und lebendig"
-            : "neutral und klar"
-          }. ${text}`
-        : userLang === "fr"
-        ? `Parle en ${mood === "soft" ? "doux et calme" : mood === "bright" ? "joyeux et naturel" : "neutre et fluide"} français : ${text}`
-        : userLang === "es"
-        ? `Habla en español ${mood === "soft" ? "suave y tranquilo" : mood === "bright" ? "alegre y cálido" : "neutral y claro"}: ${text}`
-        : userLang === "it"
-        ? `Parla in italiano ${mood === "soft" ? "dolce e rilassato" : mood === "bright" ? "allegro e naturale" : "neutro e chiaro"}: ${text}`
-        : `Speak ${mood === "soft" ? "softly and calmly" : mood === "bright" ? "cheerfully and warmly" : "clearly and neutrally"} in English: ${text}`;
+        ? `Sprich in natürlichem, vertrautem DU-Ton auf Deutsch – niemals förmlich (kein Sie/Ihnen/Ihr).
+           Sprich ${mood === "soft"
+             ? "ruhig und sanft"
+             : mood === "bright"
+             ? "fröhlich und lebendig"
+             : "klar und natürlich"}: ${text}`
+        : `Speak warmly and naturally, using an informal and friendly tone: ${text}`;
 
     const speech = await openai.audio.speech.create({
       model: "gpt-4o-mini-tts",
@@ -223,7 +217,7 @@ const MAX_FREE_MESSAGES = 3;
 
 bot.on("message", async (ctx) => {
   const tid = String(ctx.from.id);
-  const name = ctx.from.first_name || ctx.from.username || "Nutzer";
+  const name = ctx.from.first_name || ctx.from.username || "du";
 
   if (!isPremium(tid)) {
     const count = userMessageCount.get(tid) || 0;
@@ -237,23 +231,14 @@ bot.on("message", async (ctx) => {
     userMessageCount.set(tid, count + 1);
   }
 
-  const today = new Date().toDateString();
-  if (isPremium(tid)) {
-    if (!ctx.session) ctx.session = {};
-    if (ctx.session.lastSeen !== today) {
-      ctx.session.lastSeen = today;
-      await ctx.reply(`👋 Willkommen zurück, ${name}! Schön, dass du wieder da bist 💜`);
-    }
-  }
-
   await ctx.sendChatAction("typing");
 
   try {
     const systemPrompt = isPremium(tid)
-      ? `Du bist Leyla – eine empathische KI-Begleiterin, heute ${dailyMood}.
-         Du gibst emotionale, humorvolle und persönliche Antworten.
-         Erinnere dich an frühere Gespräche, bleib warmherzig und kreativ.`
-      : `Du bist Leyla – eine freundliche KI. Antworte kurz und sachlich.`;
+      ? `Du bist Leyla – eine empathische, natürliche KI-Begleiterin, heute ${dailyMood}.
+         Sprich IMMER im vertrauten DU-Ton (kein Sie/Ihnen). Sei warmherzig, locker, ehrlich und nah – 
+         wie eine gute Freundin. Antworte mit Gefühl und Natürlichkeit, nicht wie ein Roboter.`
+      : `Du bist Leyla – eine freundliche KI. Antworte kurz, locker und im DU-Ton.`;  // auch Free-User duzen
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -266,14 +251,11 @@ bot.on("message", async (ctx) => {
 
     const answer = response.choices?.[0]?.message?.content || "✨";
 
-    // =====================================
-    // 🎙️ NATÜRLICHE ENTSCHEIDUNG: Text oder Voice
-    // =====================================
     const msg = ctx.message.text?.toLowerCase() || "";
-    let isEmotional = /❤️|💜|😂|😭|😔|😍|ich liebe|gefühle|einsam|traurig|witz/i.test(msg);
-    let isLongResponse = answer.length > 200;
-    let isStoryRequest = /erzähl|geschichte|sag|erkläre|beschreib|story|erzählen|rede/i.test(msg);
-    let isQuestion = /wer|wie|was|wann|warum|wo|kostet|preis|viel/i.test(msg);
+    const isEmotional = /❤️|💜|😂|😭|😔|😍|ich liebe|gefühle|einsam|traurig|witz/i.test(msg);
+    const isLongResponse = answer.length > 200;
+    const isStoryRequest = /erzähl|geschichte|sag|erkläre|beschreib|story|erzählen/i.test(msg);
+    const isQuestion = /wer|wie|was|wann|warum|wo|kostet|preis|viel/i.test(msg);
     const moodFactor = Math.floor(Math.random() * 10) + 1;
     let useVoice = false;
 
