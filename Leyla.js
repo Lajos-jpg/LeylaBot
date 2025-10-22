@@ -229,6 +229,63 @@ und mit Gefühl antwortet.`;
     await ctx.reply("Oh, da ist was schiefgelaufen 😔 Versuch es bitte gleich nochmal.\n\nWenn das Problem bleibt, schreib bitte an 📧 Leyla-secret@gmx.de");
   }
 });
+// =====================================
+// 📧 ADMINMAIL-FUNKTION (nur für Admin erlaubt)
+// =====================================
+const ADMIN_ID = "7826XXXXXXXX"; // <-- hier deine echte Telegram-ID eintragen
+
+bot.command("adminmail", async (ctx) => {
+  try {
+    const tid = String(ctx.from.id);
+    const username = ctx.from.username || ctx.from.first_name || "Unbekannt";
+
+    // ✅ Zugriff nur für den Admin erlauben
+    if (tid !== ADMIN_ID) {
+      await ctx.reply("⚠️ Dieser Befehl ist nur für den Leyla-Support verfügbar.");
+      return;
+    }
+
+    const messageParts = ctx.message.text.split(" ").slice(1);
+    const userMessage = messageParts.join(" ");
+
+    if (!userMessage) {
+      await ctx.reply(
+        "Bitte gib deine Nachricht an, z. B.:\n`/adminmail Erinnerung: Stripe prüfen`",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: process.env.MAIL_HOST,
+      port: process.env.MAIL_PORT,
+      secure: false,
+      auth: {
+        user: process.env.MAIL_USER,
+        pass: process.env.MAIL_PASS,
+      },
+    });
+
+    const mailOptions = {
+      from: `"Leyla Bot (Admin)" <${process.env.MAIL_USER}>`,
+      to: process.env.MAIL_USER,
+      subject: `📩 Admin-Mail von ${username}`,
+      text: `Nachricht von Admin (${username}, ID: ${tid}):\n\n${userMessage}`,
+      html: `
+        <h3>📩 Admin-Mail von ${username}</h3>
+        <p><b>Telegram ID:</b> ${tid}</p>
+        <p><b>Nachricht:</b><br>${userMessage}</p>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ Admin-Mail von ${username} gesendet.`);
+    await ctx.reply("💌 Deine Nachricht wurde erfolgreich per E-Mail verschickt 💜");
+  } catch (err) {
+    console.error("❌ Fehler beim Senden der Admin-Mail:", err);
+    await ctx.reply("⚠️ Fehler beim Senden deiner Nachricht. Bitte prüfe Render Logs.");
+  }
+});
 
 // =====================================
 // 🌐 WEBHOOK / POLLING
@@ -302,6 +359,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
+
 
 
 
