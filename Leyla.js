@@ -33,8 +33,7 @@ if (fs.existsSync(premiumFile)) {
 }
 const savePremiumUsers = () =>
   fs.writeFileSync(premiumFile, JSON.stringify([...premiumUsers]), "utf8");
-const isPremium = (id) => premiumUsers.has(String(id));
-
+const isPremium = (id) => premiumUsers.has(Number(id));
 // =====================================
 // 🧩 STRIPE WEBHOOKS
 // =====================================
@@ -359,6 +358,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
+
 
 
 
