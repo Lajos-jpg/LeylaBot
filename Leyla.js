@@ -265,40 +265,43 @@ process.on("unhandledRejection", async (e) => {
   await sendErrorMail("LeylaBot – Unhandled Rejection", JSON.stringify(e));
 });
 // =====================================
-// 🧪 DEBUG TEST-E-MAIL SENDEN
+// 🧪 DEBUG TEST-E-MAIL SENDEN (nur im DEV-Modus erlaubt)
 // =====================================
+import nodemailer from "nodemailer";
 
+if (process.env.NODE_ENV !== "production") {
+  app.get("/debug/test-email", async (_req, res) => {
+    try {
+      console.log("📧 Test-E-Mail wird gesendet...");
 
-app.get("/debug/test-email", async (_req, res) => {
-  try {
-    console.log("📧 Test-E-Mail wird gesendet...");
+      const transporter = nodemailer.createTransport({
+        host: process.env.MAIL_HOST,
+        port: process.env.MAIL_PORT,
+        secure: false,
+        auth: {
+          user: process.env.MAIL_USER,
+          pass: process.env.MAIL_PASS,
+        },
+      });
 
-    const transporter = nodemailer.createTransport({
-      host: process.env.MAIL_HOST,
-      port: process.env.MAIL_PORT,
-      secure: false, // Port 587 -> STARTTLS, also false
-      auth: {
-        user: process.env.MAIL_USER,
-        pass: process.env.MAIL_PASS,
-      },
-    });
+      await transporter.sendMail({
+        from: `"Leyla Bot" <${process.env.MAIL_USER}>`,
+        to: process.env.MAIL_USER,
+        subject: "✅ Leyla Test-E-Mail erfolgreich!",
+        text: "Hallo von Leyla 💜 — dein E-Mail-System funktioniert perfekt!",
+        html: "<h2>💜 Leyla sagt Hallo!</h2><p>Dein E-Mail-System funktioniert perfekt.</p>",
+      });
 
-    await transporter.sendMail({
-      from: `"Leyla Bot" <${process.env.MAIL_USER}>`,
-      to: process.env.MAIL_USER,
-      subject: "✅ Leyla Test-E-Mail erfolgreich!",
-      text: "Hallo von Leyla 💜 — dein E-Mail-System funktioniert perfekt!",
-      html: "<h2>💜 Leyla sagt Hallo!</h2><p>Dein E-Mail-System funktioniert perfekt.</p>",
-    });
-
-    console.log("✅ Test-E-Mail erfolgreich gesendet!");
-    res.send("✅ Test-Mail wurde erfolgreich gesendet!");
-  } catch (err) {
-    console.error("❌ Fehler beim Senden der Test-Mail:", err);
-    res.status(500).send("❌ Fehler beim Senden der E-Mail: " + err.message);
-  }
-});
+      console.log("✅ Test-E-Mail erfolgreich gesendet!");
+      res.send("✅ Test-Mail wurde erfolgreich gesendet!");
+    } catch (err) {
+      console.error("❌ Fehler beim Senden der Test-Mail:", err);
+      res.status(500).send("❌ Fehler beim Senden der E-Mail: " + err.message);
+    }
+  });
+}
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
+
 
 
