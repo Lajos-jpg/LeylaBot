@@ -267,7 +267,7 @@ process.on("unhandledRejection", async (e) => {
 // =====================================
 // 🧪 DEBUG TEST-E-MAIL SENDEN (nur im DEV-Modus erlaubt)
 // =====================================
-import nodemailer from "nodemailer";
+
 
 if (process.env.NODE_ENV !== "production") {
   app.get("/debug/test-email", async (_req, res) => {
@@ -302,6 +302,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
+
 
 
 
