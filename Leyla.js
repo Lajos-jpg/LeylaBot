@@ -232,7 +232,7 @@ und mit Gefühl antwortet.`;
 // =====================================
 // 📧 ADMINMAIL-FUNKTION (nur für Admin erlaubt)
 // =====================================
-const ADMIN_ID = "7826XXXXXXXX"; // <-- hier deine echte Telegram-ID eintragen
+const ADMIN_ID = "632319907"; // <-- hier deine echte Telegram-ID eintragen
 
 bot.command("adminmail", async (ctx) => {
   try {
@@ -359,6 +359,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
+
 
 
 
