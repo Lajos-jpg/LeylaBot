@@ -267,7 +267,7 @@ process.on("unhandledRejection", async (e) => {
 // =====================================
 // 🧪 DEBUG TEST-E-MAIL SENDEN
 // =====================================
-import nodemailer from "nodemailer";
+
 
 app.get("/debug/test-email", async (_req, res) => {
   try {
@@ -300,4 +300,5 @@ app.get("/debug/test-email", async (_req, res) => {
 });
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
+
 
