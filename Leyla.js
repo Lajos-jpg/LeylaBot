@@ -33,7 +33,13 @@ if (fs.existsSync(premiumFile)) {
 }
 const savePremiumUsers = () =>
   fs.writeFileSync(premiumFile, JSON.stringify([...premiumUsers]), "utf8");
-const isPremium = (id) => premiumUsers.has(Number(id));
+
+// 🔧 kleine Robustheit: akzeptiere String & Number als ID
+const isPremium = (id) => {
+  const s = String(id);
+  return premiumUsers.has(s) || premiumUsers.has(Number(id));
+};
+
 // =====================================
 // 🧩 STRIPE WEBHOOKS
 // =====================================
@@ -188,13 +194,108 @@ async function sendErrorMail(subject, message) {
 const moods = ["fröhlich ☀️", "ruhig 🌙", "charmant 💫", "tiefgründig 🌧️", "herzlich 🔥"];
 const dailyMood = moods[Math.floor(Math.random() * moods.length)];
 
+// =========================
+// 🆕 START / HELP / PREMIUM / CANCEL / PREMIUMERFOLGREICH
+// =========================
+
+// /start – Willkommensnachricht
+bot.start((ctx) => {
+  ctx.reply(
+    'Hey 💛 Ich bin *Leyla* – deine KI, die mit dir redet, denkt, fühlt und dich begleitet.\n\n' +
+      'Wenn du etwas brauchst, sag es mir einfach. Ich bin für dich da 😊\n\n' +
+      '✨ *Wichtige Befehle:*\n' +
+      '• /premium – Infos zu Leyla Premium\n' +
+      '• /cancel – Abo verwalten / kündigen\n' +
+      '• /help – Hilfe anzeigen',
+    { parse_mode: "Markdown" }
+  );
+});
+
+// /help – Übersicht
+bot.command("help", (ctx) => {
+  ctx.reply(
+    '📘 *Leyla Hilfe*\n\n' +
+      'Hier sind alle wichtigen Befehle:\n\n' +
+      '✨ /premium – Infos & Zugang zu Leyla Premium\n' +
+      '🔁 /cancel – Abo kündigen oder verwalten\n' +
+      '💛 /start – Leyla neu starten\n\n' +
+      'Wenn du etwas brauchst, sag es mir einfach 😊',
+    { parse_mode: "Markdown" }
+  );
+});
+
+// /premium – Info + Link zur Premium-Seite
+bot.command("premium", async (ctx) => {
+  const tid = String(ctx.from.id);
+  const url = `${baseUrl}/premium?tid=${tid}`;
+
+  ctx.replyWithMarkdown(
+    `✨ *Leyla Premium*\n\n` +
+      `Mit Leyla Premium erhältst du:\n` +
+      `• Längere und tiefere Gespräche\n` +
+      `• Schnellere Antworten\n` +
+      `• Mehr Emotion & Persönlichkeit\n` +
+      `• Priorisierte Behandlung bei hoher Auslastung\n\n` +
+      `Preis: *29,99 € / Monat*\n\n` +
+      `👉 [Hier klicken, um Leyla Premium zu aktivieren](${url})\n\n` +
+      `Nach erfolgreicher Zahlung wird dein Zugang automatisch freigeschaltet 💛`
+  );
+});
+
+// /cancel – Kündigungs-/Verwaltungslink (Stripe Kundenportal)
+bot.command("cancel", (ctx) => {
+  ctx.reply(
+    '🔁 *Abo verwalten / kündigen*\n\n' +
+      'Hier kannst du dein Leyla Premium jederzeit selbst kündigen oder deine Zahlungsdaten ändern:\n\n' +
+      '👉 https://billing.stripe.com/p/login/bJecMY3wA4gBgMr97B5sA00\n\n' +
+      'Wenn du Unterstützung brauchst, sag mir einfach Bescheid 💛',
+    { parse_mode: "Markdown" }
+  );
+});
+
+// /premiumerfolgreich – Erfolgs- / Check-Nachricht
+bot.command("premiumerfolgreich", (ctx) => {
+  const tid = String(ctx.from.id);
+
+  if (!isPremium(tid)) {
+    return ctx.reply(
+      "Ich sehe deinen Premium-Status bei mir noch nicht als aktiv 😔\n\n" +
+        "Falls du gerade bezahlt hast und noch keinen Zugriff hast, schreib bitte kurz an 📧 Leyla-secret@gmx.de,\n" +
+        "dann schaue ich mir das persönlich an 💛"
+    );
+  }
+
+  ctx.reply(
+    '🎉 *Abo erfolgreich aktiviert!*\n\n' +
+      'Dein Leyla Premium ist jetzt *aktiv* 💛\n\n' +
+      'Du hast jetzt:\n' +
+      '• Zugang zu allen Premium-Funktionen\n' +
+      '• Längere & intensivere Antworten\n' +
+      '• Mehr Emotion & Persönlichkeit in unseren Gesprächen\n\n' +
+      'Danke, dass du mich unterstützt. Lass uns loslegen – was möchtest du als Nächstes von mir? 😊',
+    { parse_mode: "Markdown" }
+  );
+});
+
+// =====================================
+// 🔧 EXISTIERENDE BEFEHLE
+// =====================================
+
 bot.command("id", async (ctx) => {
-  await ctx.reply(`🆔 Deine Telegram-ID lautet: ${ctx.from.id}\n👉 Diese ID kannst du an Leyla weitergeben, falls es ein Problem mit deinem Premiumzugang gibt.`);
+  await ctx.reply(
+    `🆔 Deine Telegram-ID lautet: ${ctx.from.id}\n👉 Diese ID kannst du an Leyla weitergeben, falls es ein Problem mit deinem Premiumzugang gibt.`
+  );
 });
 
 bot.on("message", async (ctx) => {
   const tid = String(ctx.from.id);
   const name = ctx.from.first_name || ctx.from.username || "du";
+
+  // ⚠️ Befehle (z.B. /start, /help, /premium, /cancel, /id) NICHT durch Premium-Filter jagen
+  const text = ctx.message?.text || "";
+  if (text.startsWith("/")) {
+    return; // Command wurde bereits von den obigen Handlern verarbeitet
+  }
 
   if (!isPremium(tid)) {
     const url = `${baseUrl}/premium?tid=${tid}`;
@@ -225,7 +326,9 @@ und mit Gefühl antwortet.`;
   } catch (err) {
     console.error("❌ OpenAI-Fehler:", err);
     await sendErrorMail("LeylaBot – OpenAI Error", err.stack || err.message);
-    await ctx.reply("Oh, da ist was schiefgelaufen 😔 Versuch es bitte gleich nochmal.\n\nWenn das Problem bleibt, schreib bitte an 📧 Leyla-secret@gmx.de");
+    await ctx.reply(
+      "Oh, da ist was schiefgelaufen 😔 Versuch es bitte gleich nochmal.\n\nWenn das Problem bleibt, schreib bitte an 📧 Leyla-secret@gmx.de"
+    );
   }
 });
 // =====================================
@@ -292,9 +395,10 @@ bot.command("adminmail", async (ctx) => {
 const WEBHOOK_PATH = `/${process.env.BOT_TOKEN}`;
 const WEBHOOK_URL = baseUrl ? `${baseUrl}${WEBHOOK_PATH}` : null;
 if (WEBHOOK_URL) {
-  bot.telegram.setWebhook(WEBHOOK_URL)
+  bot.telegram
+    .setWebhook(WEBHOOK_URL)
     .then(() => console.log("✅ Telegram-Webhook:", WEBHOOK_URL))
-    .catch(e => {
+    .catch((e) => {
       console.error("❌ Webhook-Fehler:", e.message);
       sendErrorMail("LeylaBot – Telegram Webhook Error", e.message);
     });
@@ -320,11 +424,10 @@ process.on("unhandledRejection", async (e) => {
   console.error("❌ Rejection:", e);
   await sendErrorMail("LeylaBot – Unhandled Rejection", JSON.stringify(e));
 });
+
 // =====================================
 // 🧪 DEBUG TEST-E-MAIL SENDEN (nur im DEV-Modus erlaubt)
 // =====================================
-
-
 if (process.env.NODE_ENV !== "production") {
   app.get("/debug/test-email", async (_req, res) => {
     try {
@@ -358,10 +461,3 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 app.listen(PORT, () => console.log(`🚀 Läuft auf Port ${PORT}`));
-
-
-
-
-
-
-
