@@ -6,6 +6,7 @@ import bodyParser from "body-parser";
 import fs from "fs";
 import path from "path";
 import nodemailer from "nodemailer";
+import fetch from "node-fetch"; // 🔊 Für Voice-Download
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,50 +35,73 @@ if (fs.existsSync(premiumFile)) {
 const savePremiumUsers = () =>
   fs.writeFileSync(premiumFile, JSON.stringify([...premiumUsers]), "utf8");
 
-// 🔧 kleine Robustheit: akzeptiere String & Number als ID
+// 🔧 robustere Premium-Prüfung (String/Number)
 const isPremium = (id) => {
   const s = String(id);
   return premiumUsers.has(s) || premiumUsers.has(Number(id));
 };
 
 // =====================================
+// 🔊 VOICE-MODE USER HANDLING
+// =====================================
+const voiceModeFile = "./voiceModeUsers.json";
+let voiceModeUsers = new Set();
+if (fs.existsSync(voiceModeFile)) {
+  try {
+    voiceModeUsers = new Set(JSON.parse(fs.readFileSync(voiceModeFile, "utf8")));
+    console.log(`🎧 ${voiceModeUsers.size} User mit Voice-Mode geladen.`);
+  } catch (err) {
+    console.error("❌ Fehler beim Laden voiceModeUsers:", err);
+  }
+}
+
+const saveVoiceModeUsers = () =>
+  fs.writeFileSync(voiceModeFile, JSON.stringify([...voiceModeUsers]), "utf8");
+
+const isVoiceModeOn = (id) => voiceModeUsers.has(String(id));
+
+// =====================================
 // 🧩 STRIPE WEBHOOKS
 // =====================================
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
-app.post("/webhook", bodyParser.raw({ type: "application/json" }), (req, res) => {
-  const sig = req.headers["stripe-signature"];
-  let event;
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-    console.log("✅ Webhook:", event.type);
+app.post(
+  "/webhook",
+  bodyParser.raw({ type: "application/json" }),
+  (req, res) => {
+    const sig = req.headers["stripe-signature"];
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+      console.log("✅ Webhook:", event.type);
 
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object;
-      const tid = String(session.client_reference_id || "").trim();
-      if (tid) {
-        premiumUsers.add(tid);
-        savePremiumUsers();
-        console.log("💎 Premium freigeschaltet:", tid);
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object;
+        const tid = String(session.client_reference_id || "").trim();
+        if (tid) {
+          premiumUsers.add(tid);
+          savePremiumUsers();
+          console.log("💎 Premium freigeschaltet:", tid);
+        }
       }
-    }
 
-    if (event.type === "customer.subscription.deleted") {
-      const sub = event.data.object;
-      const tid = sub.metadata?.telegram_id;
-      if (tid && premiumUsers.has(tid)) {
-        premiumUsers.delete(tid);
-        savePremiumUsers();
-        console.log("❌ Premium entfernt:", tid);
+      if (event.type === "customer.subscription.deleted") {
+        const sub = event.data.object;
+        const tid = sub.metadata?.telegram_id;
+        if (tid && premiumUsers.has(tid)) {
+          premiumUsers.delete(tid);
+          savePremiumUsers();
+          console.log("❌ Premium entfernt:", tid);
+        }
       }
-    }
 
-    res.json({ received: true });
-  } catch (err) {
-    console.error("❌ Webhook-Fehler:", err.message);
-    sendErrorMail("LeylaBot – Stripe Webhook Error", err.message);
-    res.status(400).send(`Webhook Error: ${err.message}`);
+      res.json({ received: true });
+    } catch (err) {
+      console.error("❌ Webhook-Fehler:", err.message);
+      sendErrorMail("LeylaBot – Stripe Webhook Error", err.message);
+      res.status(400).send(`Webhook Error: ${err.message}`);
+    }
   }
-});
+);
 
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
@@ -131,7 +155,10 @@ app.post("/create-checkout-session", async (req, res) => {
     res.redirect(303, session.url);
   } catch (err) {
     console.error("❌ Checkout-Fehler:", err);
-    await sendErrorMail("LeylaBot – Stripe Checkout Error", err.stack || err.message);
+    await sendErrorMail(
+      "LeylaBot – Stripe Checkout Error",
+      err.stack || err.message
+    );
     res.status(400).send("Fehler beim Checkout: " + err.message);
   }
 });
@@ -157,10 +184,14 @@ app.get("/cancel", (_req, res) =>
 // 📜 IMPRESSUM & DATENSCHUTZ
 // =====================================
 app.get("/impressum", (_req, res) =>
-  res.send("<h2>Impressum</h2><p>Betreiber: Lajos Nagy · Kontakt: <a href='mailto:Leyla-secret@gmx.de'>Leyla-secret@gmx.de</a></p>")
+  res.send(
+    "<h2>Impressum</h2><p>Betreiber: Lajos Nagy · Kontakt: <a href='mailto:Leyla-secret@gmx.de'>Leyla-secret@gmx.de</a></p>"
+  )
 );
 app.get("/datenschutz", (_req, res) =>
-  res.send("<h2>Datenschutz</h2><p>Deine Daten werden ausschließlich zur Zahlungsabwicklung verwendet.</p>")
+  res.send(
+    "<h2>Datenschutz</h2><p>Deine Daten werden ausschließlich zur Zahlungsabwicklung verwendet.</p>"
+  )
 );
 
 // =====================================
@@ -191,22 +222,88 @@ async function sendErrorMail(subject, message) {
 // =====================================
 // 🤖 TELEGRAM BOT LOGIK
 // =====================================
-const moods = ["fröhlich ☀️", "ruhig 🌙", "charmant 💫", "tiefgründig 🌧️", "herzlich 🔥"];
+const moods = [
+  "fröhlich ☀️",
+  "ruhig 🌙",
+  "charmant 💫",
+  "tiefgründig 🌧️",
+  "herzlich 🔥",
+];
 const dailyMood = moods[Math.floor(Math.random() * moods.length)];
 
+// =====================================
+// 🔊 HILFSFUNKTIONEN VOICE
+// =====================================
+
+// Sprachnachricht -> Text (Whisper)
+async function transcribeVoiceMessage(ctx) {
+  try {
+    const voice = ctx.message.voice;
+    if (!voice) return "";
+
+    const fileLink = await ctx.telegram.getFileLink(voice.file_id);
+    const url = fileLink.href || fileLink;
+
+    const response = await fetch(url);
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    const tempPath = path.join("./", `voice_${Date.now()}.ogg`);
+    fs.writeFileSync(tempPath, buffer);
+
+    const transcription = await openai.audio.transcriptions.create({
+      file: fs.createReadStream(tempPath),
+      model: "whisper-1",
+      language: "de",
+    });
+
+    fs.unlink(tempPath, () => {});
+    return transcription.text;
+  } catch (err) {
+    console.error("❌ Fehler bei Spracherkennung:", err);
+    await sendErrorMail(
+      "LeylaBot – Voice Transcription Error",
+      err.stack || err.message
+    );
+    return "";
+  }
+}
+
+// Text -> Sprach-Audio (TTS mit Stimme "verse")
+async function synthesizeVoice(text) {
+  try {
+    const speech = await openai.audio.speech.create({
+      model: "gpt-4o-mini-tts",
+      voice: "verse",
+      input: text,
+    });
+
+    const buffer = Buffer.from(await speech.arrayBuffer());
+    return buffer;
+  } catch (err) {
+    console.error("❌ Fehler bei TTS:", err);
+    await sendErrorMail(
+      "LeylaBot – TTS Error",
+      err.stack || err.message
+    );
+    return null;
+  }
+}
+
 // =========================
-// 🆕 START / HELP / PREMIUM / CANCEL / PREMIUMERFOLGREICH
+// 🆕 START / HELP / PREMIUM / CANCEL / PREMIUMERFOLGREICH / VOICEMODE
 // =========================
 
 // /start – Willkommensnachricht
 bot.start((ctx) => {
   ctx.reply(
-    'Hey 💛 Ich bin *Leyla* – deine KI, die mit dir redet, denkt, fühlt und dich begleitet.\n\n' +
-      'Wenn du etwas brauchst, sag es mir einfach. Ich bin für dich da 😊\n\n' +
-      '✨ *Wichtige Befehle:*\n' +
-      '• /premium – Infos zu Leyla Premium\n' +
-      '• /cancel – Abo verwalten / kündigen\n' +
-      '• /help – Hilfe anzeigen',
+    "Hey 💛 Ich bin *Leyla* – deine KI, die mit dir redet, denkt, fühlt und dich begleitet.\n\n" +
+      "Wenn du etwas brauchst, sag es mir einfach. Ich bin für dich da 😊\n\n" +
+      "✨ *Wichtige Befehle:*\n" +
+      "• /premium – Infos zu Leyla Premium\n" +
+      "• /cancel – Abo verwalten / kündigen\n" +
+      "• /voicemode on|off – Sprachantworten an/aus\n" +
+      "• /help – Hilfe anzeigen",
     { parse_mode: "Markdown" }
   );
 });
@@ -214,12 +311,13 @@ bot.start((ctx) => {
 // /help – Übersicht
 bot.command("help", (ctx) => {
   ctx.reply(
-    '📘 *Leyla Hilfe*\n\n' +
-      'Hier sind alle wichtigen Befehle:\n\n' +
-      '✨ /premium – Infos & Zugang zu Leyla Premium\n' +
-      '🔁 /cancel – Abo kündigen oder verwalten\n' +
-      '💛 /start – Leyla neu starten\n\n' +
-      'Wenn du etwas brauchst, sag es mir einfach 😊',
+    "📘 *Leyla Hilfe*\n\n" +
+      "Hier sind alle wichtigen Befehle:\n\n" +
+      "✨ /premium – Infos & Zugang zu Leyla Premium\n" +
+      "🔁 /cancel – Abo kündigen oder verwalten\n" +
+      "🎧 /voicemode on|off – Sprachantworten von Leyla an- oder ausschalten\n" +
+      "💛 /start – Leyla neu starten\n\n" +
+      "Wenn du etwas brauchst, sag es mir einfach 😊",
     { parse_mode: "Markdown" }
   );
 });
@@ -245,10 +343,10 @@ bot.command("premium", async (ctx) => {
 // /cancel – Kündigungs-/Verwaltungslink (Stripe Kundenportal)
 bot.command("cancel", (ctx) => {
   ctx.reply(
-    '🔁 *Abo verwalten / kündigen*\n\n' +
-      'Hier kannst du dein Leyla Premium jederzeit selbst kündigen oder deine Zahlungsdaten ändern:\n\n' +
-      '👉 https://billing.stripe.com/p/login/bJecMY3wA4gBgMr97B5sA00\n\n' +
-      'Wenn du Unterstützung brauchst, sag mir einfach Bescheid 💛',
+    "🔁 *Abo verwalten / kündigen*\n\n" +
+      "Hier kannst du dein Leyla Premium jederzeit selbst kündigen oder deine Zahlungsdaten ändern:\n\n" +
+      "👉 https://billing.stripe.com/p/login/bJecMY3wA4gBgMr97B5sA00\n\n" +
+      "Wenn du Unterstützung brauchst, sag mir einfach Bescheid 💛",
     { parse_mode: "Markdown" }
   );
 });
@@ -266,14 +364,55 @@ bot.command("premiumerfolgreich", (ctx) => {
   }
 
   ctx.reply(
-    '🎉 *Abo erfolgreich aktiviert!*\n\n' +
-      'Dein Leyla Premium ist jetzt *aktiv* 💛\n\n' +
-      'Du hast jetzt:\n' +
-      '• Zugang zu allen Premium-Funktionen\n' +
-      '• Längere & intensivere Antworten\n' +
-      '• Mehr Emotion & Persönlichkeit in unseren Gesprächen\n\n' +
-      'Danke, dass du mich unterstützt. Lass uns loslegen – was möchtest du als Nächstes von mir? 😊',
+    "🎉 *Abo erfolgreich aktiviert!*\n\n" +
+      "Dein Leyla Premium ist jetzt *aktiv* 💛\n\n" +
+      "Du hast jetzt:\n" +
+      "• Zugang zu allen Premium-Funktionen\n" +
+      "• Längere & intensivere Antworten\n" +
+      "• Mehr Emotion & Persönlichkeit in unseren Gesprächen\n\n" +
+      "Danke, dass du mich unterstützt. Lass uns loslegen – was möchtest du als Nächstes von mir? 😊",
     { parse_mode: "Markdown" }
+  );
+});
+
+// /voicemode on|off – Sprachmodus umschalten
+bot.command("voicemode", (ctx) => {
+  const tid = String(ctx.from.id);
+  const parts = (ctx.message.text || "").trim().split(/\s+/);
+  const arg = (parts[1] || "").toLowerCase();
+
+  if (!arg) {
+    const status = isVoiceModeOn(tid) ? "🔊 *aktiv*" : "🔇 *deaktiviert*";
+    return ctx.reply(
+      `🎧 *Voice-Mode*\n\n` +
+        `Aktueller Status: ${status}\n\n` +
+        `Nutze:\n` +
+        `• /voicemode on – damit ich dir mit Stimme antworte\n` +
+        `• /voicemode off – damit ich nur als Text antworte`,
+      { parse_mode: "Markdown" }
+    );
+  }
+
+  if (arg === "on") {
+    voiceModeUsers.add(tid);
+    saveVoiceModeUsers();
+    return ctx.reply(
+      "🎧 Voice-Mode ist jetzt *aktiv* – ich antworte dir, wenn möglich, mit Stimme 💛",
+      { parse_mode: "Markdown" }
+    );
+  }
+
+  if (arg === "off") {
+    voiceModeUsers.delete(tid);
+    saveVoiceModeUsers();
+    return ctx.reply(
+      "🔇 Voice-Mode ist jetzt *aus* – ich antworte dir wieder nur als Text 😊",
+      { parse_mode: "Markdown" }
+    );
+  }
+
+  return ctx.reply(
+    "Bitte nutze:\n/voicemode on\noder\n/voicemode off 😊"
   );
 });
 
@@ -287,14 +426,16 @@ bot.command("id", async (ctx) => {
   );
 });
 
+// =====================================
+// 🧠 HAUPT-NACHRICHTENHANDLER (Text & Voice)
+// =====================================
 bot.on("message", async (ctx) => {
   const tid = String(ctx.from.id);
-  const name = ctx.from.first_name || ctx.from.username || "du";
 
-  // ⚠️ Befehle (z.B. /start, /help, /premium, /cancel, /id) NICHT durch Premium-Filter jagen
-  const text = ctx.message?.text || "";
-  if (text.startsWith("/")) {
-    return; // Command wurde bereits von den obigen Handlern verarbeitet
+  // Befehle nicht doppelt behandeln
+  const rawText = ctx.message?.text || "";
+  if (rawText.startsWith("/")) {
+    return;
   }
 
   if (!isPremium(tid)) {
@@ -308,29 +449,62 @@ bot.on("message", async (ctx) => {
   await ctx.sendChatAction("typing");
 
   try {
+    // Input bestimmen: Text oder transkribierte Voice
+    let userText = rawText;
+
+    if (!userText && ctx.message.voice) {
+      userText = await transcribeVoiceMessage(ctx);
+    }
+
+    if (!userText) {
+      await ctx.reply(
+        "Ich konnte dich gerade nicht richtig verstehen 😔\nSchick mir bitte nochmal eine Nachricht oder Sprachnachricht."
+      );
+      return;
+    }
+
     const systemPrompt = `Du bist Leyla – eine empathische, natürliche KI-Begleiterin, heute ${dailyMood}.
 Sprich IMMER in vertrautem Ton (du, dich, dir, dein), niemals förmlich (kein Sie/Ihnen/Ihr).
 Dein Stil ist locker, warmherzig, ehrlich und nah – wie eine gute Freundin, die immer zuhört
 und mit Gefühl antwortet.`;
 
-    const response = await openai.chat.completions.create({
+    const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: ctx.message.text || "" },
+        { role: "user", content: userText },
       ],
       max_tokens: 400,
     });
 
-    await ctx.reply(response.choices?.[0]?.message?.content || "✨");
+    const answer =
+      completion.choices?.[0]?.message?.content?.trim() || "✨";
+
+    if (isVoiceModeOn(tid)) {
+      const audioBuffer = await synthesizeVoice(answer);
+      if (audioBuffer) {
+        await ctx.replyWithAudio(
+          { source: audioBuffer, filename: "leyla.mp3" },
+          { title: "Leyla", performer: "Leyla" }
+        );
+      } else {
+        await ctx.reply(answer);
+      }
+    } else {
+      await ctx.reply(answer);
+    }
   } catch (err) {
     console.error("❌ OpenAI-Fehler:", err);
-    await sendErrorMail("LeylaBot – OpenAI Error", err.stack || err.message);
+    await sendErrorMail(
+      "LeylaBot – OpenAI Error",
+      err.stack || err.message
+    );
     await ctx.reply(
       "Oh, da ist was schiefgelaufen 😔 Versuch es bitte gleich nochmal.\n\nWenn das Problem bleibt, schreib bitte an 📧 Leyla-secret@gmx.de"
     );
   }
 });
+
 // =====================================
 // 📧 ADMINMAIL-FUNKTION (nur für Admin erlaubt)
 // =====================================
@@ -411,18 +585,26 @@ if (WEBHOOK_URL) {
 // 🩺 HEALTH & ROOT
 // =====================================
 app.get("/health", (_req, res) => res.status(200).send("ok"));
-app.get("/", (_req, res) => res.send(`💎 Leyla aktiv – Premium Only (${dailyMood})`));
+app.get("/", (_req, res) =>
+  res.send(`💎 Leyla aktiv – Premium Only (${dailyMood})`)
+);
 
 // =====================================
 // 🚀 SERVER & FEHLERÜBERWACHUNG
 // =====================================
 process.on("uncaughtException", async (e) => {
   console.error("❌ Exception:", e);
-  await sendErrorMail("LeylaBot – Uncaught Exception", e.stack || e.message);
+  await sendErrorMail(
+    "LeylaBot – Uncaught Exception",
+    e.stack || e.message
+  );
 });
 process.on("unhandledRejection", async (e) => {
   console.error("❌ Rejection:", e);
-  await sendErrorMail("LeylaBot – Unhandled Rejection", JSON.stringify(e));
+  await sendErrorMail(
+    "LeylaBot – Unhandled Rejection",
+    JSON.stringify(e)
+  );
 });
 
 // =====================================
